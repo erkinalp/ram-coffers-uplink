@@ -1,0 +1,37 @@
+{
+  "name": "@ram-coffers-uplink/relay-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "22.20.1",
+    "@types/ws": "8.18.1",
+    "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "@fastify/cors": "11.3.0",
+    "@fastify/static": "9.3.0",
+    "@ram-coffers-uplink/protocol": "workspace:*",
+    "better-sqlite3": "13.0.3",
+    "dotenv": "17.4.2",
+    "fastify": "5.12.0",
+    "ws": "8.21.3"
+  }
+}

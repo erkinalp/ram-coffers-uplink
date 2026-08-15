@@ -1,0 +1,64 @@
+services:
+  relay:
+    # Local test build — no ghcr pull. Built from apps/relay/Dockerfile.
+    image: ram-coffers-uplink-relay:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: apps/relay/Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      DATABASE_PATH: /data/relay.db
+      STATS_ENABLED: "false"
+      WEB_ROOT: /app/web-dist
+    volumes:
+      - relay-data:/data
+    restart: unless-stopped
+
+  sidecar:
+    # Local test build — no ghcr pull. Built from apps/sidecar/Dockerfile.
+    image: ram-coffers-uplink-sidecar:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: apps/sidecar/Dockerfile
+    # Host networking (Linux): the sidecar reaches the coffer inference service,
+    # the P3XC cluster head and the relay's published port directly via
+    # localhost — no bridge-to-host firewall issues. RELAY_URL must point at
+    # the relay's HOST port (see ports above).
+    network_mode: host
+    environment:
+      RELAY_URL: ${RELAY_URL:-ws://localhost:8082/uplink}
+      SIDECAR_NAME: ${SIDECAR_NAME:-homelab}
+      PSK: ${SIDECAR_PSK:?set SIDECAR_PSK in .env (from the relay admin UI)}
+      # http — the coffer host's inference service; p3xc — a PS3 expert cluster;
+      # both — chat over HTTP and /coffer/v1/* over P3XC.
+      UPSTREAM: ${UPSTREAM:-http}
+      COFFER_URL: ${COFFER_URL:-http://localhost:8080}
+      P3XC_HOST: ${P3XC_HOST:-127.0.0.1}
+      P3XC_PORT: ${P3XC_PORT:-5920}
+      P3XC_TIMEOUT_MS: ${P3XC_TIMEOUT_MS:-30000}
+      # Required in p3xc mode (P3XC has no model-listing operation); in both
+      # mode it names the cluster's models on top of what HTTP discovers.
+      MODELS: ${MODELS:-}
+    restart: unless-stopped
+
+  # The RAM Coffers inference service, if you would rather containerise it than
+  # run it on the host. Then drop network_mode above, set
+  # COFFER_URL=http://coffer:8080 and RELAY_URL=ws://relay:8080/uplink.
+  # coffer:
+  #   image: ram-coffers:local
+  #   command: ["--host", "0.0.0.0", "--port", "8080", "--model", "/models/model.gguf"]
+  #   volumes:
+  #     - ${MODELS_DIR:-./models}:/models:ro
+  #   restart: unless-stopped
+
+  # A P3XC layer coordinator fronting a PS3 shelf lives on hardware rather than
+  # in a container; point P3XC_HOST/P3XC_PORT at
+  # `python -m ps3_cluster.tools.run_layer` on that host.
+
+volumes:
+  relay-data:

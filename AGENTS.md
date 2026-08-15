@@ -1,0 +1,39 @@
+# AGENTS.md — ram-coffers-uplink
+
+This subproject is self-contained (its own pnpm workspace); it is a port of
+`symphonic-navigator/ollama-uplink` with RAM Coffers upstreams.
+
+## Structure
+
+- `apps/sidecar` — Node 22 CLI; dials out to the relay, forwards to a RAM Coffers
+  HTTP inference service and/or a P3XC cluster.
+- `apps/relay/server` — Fastify 5 + ws; uplink endpoint, client APIs
+  (`/api/*`, `/v1/*`, `/coffer/v1/*`), admin and privacy REST, static SPA.
+- `apps/relay/web` — Vite + React SPA (Gruvbox dark, hand-written CSS).
+- `packages/protocol` — tunnel frame codec, session crypto (HKDF-SHA256 +
+  XChaCha20-Poly1305), `TunnelSession` multiplexer.
+- `packages/p3xc` — native TypeScript P3XC: frames, tensors, batch dispatch and a
+  persistent client. It must stay wire-compatible with
+  `../ps3-cluster/ps3_cluster/{protocol,batch}.py`; `packages/p3xc/test/interop.test.ts`
+  checks that against the Python implementation and must be extended whenever the
+  codec changes. Never shell out to Python at runtime.
+
+## Commands
+
+- `pnpm install` — install (lockfile is authoritative; `--frozen-lockfile` in CI)
+- `pnpm build` / `pnpm test` / `pnpm typecheck` / `pnpm lint` — Turborepo/Biome at the root
+- `pnpm --filter @ram-coffers-uplink/<pkg> <script>` — per package
+- Run the relay locally: `pnpm build && node apps/relay/server/dist/index.js`
+
+## Conventions
+
+- TypeScript strict, NodeNext ESM, `.js` extensions on relative imports.
+- All code, comments and docs in **British English**.
+- **Zero logging of prompts, activations or responses, anywhere, in any mode.**
+  Only connection/operational status may be logged. This is a hard rule; reject
+  any change that violates it.
+- Biome for lint + format (`pnpm lint`, `pnpm format`); vitest for tests.
+- Dependencies are pinned to exact versions (`.npmrc` sets `save-exact=true`).
+- No credentials in the repository: `.env.example` and `compose.yml` carry
+  placeholders and required-variable references only.
+- Conventional commits.

@@ -1,0 +1,151 @@
+:root {
+  --bg: #282828;
+  --bg-soft: #32302f;
+  --fg: #ebdbb2;
+  --fg-dim: #bdae93;
+  --green: #b8bb26;
+  --yellow: #fabd2f;
+  --red: #fb4934;
+  --border: #504945;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+h1 {
+  color: var(--yellow);
+  font-size: 1.4rem;
+}
+h2 {
+  color: var(--green);
+  font-size: 1.1rem;
+  margin-top: 2rem;
+}
+a {
+  color: var(--yellow);
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+nav a {
+  text-decoration: none;
+  color: var(--fg-dim);
+}
+nav a.active {
+  color: var(--green);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0 1.5rem;
+}
+th,
+td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+th {
+  color: var(--yellow);
+  background: var(--bg-soft);
+}
+
+button,
+input,
+select {
+  background: var(--bg-soft);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:hover {
+  border-color: var(--yellow);
+}
+button.danger {
+  color: var(--red);
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"] {
+  min-width: 14rem;
+}
+form.inline {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0.5rem 0 1.5rem;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1rem;
+  margin: 1rem 0;
+  background: var(--bg-soft);
+}
+.muted {
+  color: var(--fg-dim);
+}
+.error {
+  color: var(--red);
+}
+.ok {
+  color: var(--green);
+}
+.onetime-key {
+  display: block;
+  word-break: break-all;
+  color: var(--yellow);
+  background: var(--bg);
+  padding: 0.6rem;
+  border: 1px dashed var(--yellow);
+  border-radius: 3px;
+  margin: 0.5rem 0;
+}
+
+.tristate {
+  min-width: 6.5rem;
+}
+.tristate-allow {
+  color: var(--green);
+}
+.tristate-disallow {
+  color: var(--red);
+}
+.tristate-inherit {
+  color: var(--fg-dim);
+}
+.global-allowed {
+  color: var(--green);
+}
+.global-blocked {
+  color: var(--red);
+}
