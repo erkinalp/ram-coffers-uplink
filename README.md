@@ -182,8 +182,10 @@ pnpm lint
 ```
 
 The P3XC codec is verified against the Python reference implementation in
-`../ps3-cluster` (`packages/p3xc/test/interop.test.ts` encodes in TypeScript,
-decodes with `ps3_cluster.protocol`/`ps3_cluster.batch` and back); those tests
-skip automatically when `python3` cannot import the package.
+[erkinalp/ram-coffers](https://github.com/erkinalp/ram-coffers)'s `ps3-cluster`
+(`packages/p3xc/test/interop.test.ts` encodes in TypeScript, decodes with
+`ps3_cluster.protocol`/`ps3_cluster.batch` and back, and runs a Python coordinator
+over a real socket). Point `PS3_CLUSTER_DIR` at that directory, or keep a
+ram-coffers checkout beside this one; the tests skip when neither is available.
 
 See `AGENTS.md` for repository conventions. Licence: AGPLv3.

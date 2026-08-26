@@ -3,10 +3,13 @@
  * P3XC implementation: this codec has to be byte-identical to it, so the tests
  * feed frames both ways through the real Python module rather than a mock.
  *
- * Skipped when the RAM Coffers Python stack (numpy) is not installed.
+ * Skipped when that stack is not to hand: point `PS3_CLUSTER_DIR` at a
+ * ram-coffers checkout's `ps3-cluster` directory to run these, or keep one
+ * beside this repository.
  */
 
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -22,7 +25,9 @@ import {
   parseBatchResponse,
 } from "../src/index.js";
 
-const PS3_CLUSTER = fileURLToPath(new URL("../../../../ps3-cluster", import.meta.url));
+const PS3_CLUSTER =
+  process.env.PS3_CLUSTER_DIR ??
+  fileURLToPath(new URL("../../../../ram-coffers/ps3-cluster", import.meta.url));
 
 function python(script: string, stdin?: Uint8Array): { ok: boolean; stdout: Buffer } {
   const result = spawnSync("python3", ["-c", script], {
@@ -36,7 +41,8 @@ function python(script: string, stdin?: Uint8Array): { ok: boolean; stdout: Buff
 }
 
 const pythonAvailable = (() => {
-  const probe = spawnSync("python3", ["-c", "import numpy"], { cwd: PS3_CLUSTER });
+  if (!existsSync(PS3_CLUSTER)) return false;
+  const probe = spawnSync("python3", ["-c", "import numpy, ps3_cluster"], { cwd: PS3_CLUSTER });
   return probe.status === 0;
 })();
 

@@ -1,7 +1,6 @@
 # AGENTS.md — ram-coffers-uplink
 
-This subproject is self-contained (its own pnpm workspace); it is a port of
-`symphonic-navigator/ollama-uplink` with RAM Coffers upstreams.
+A port of `symphonic-navigator/ollama-uplink` with RAM Coffers upstreams.
 
 ## Structure
 
@@ -13,10 +12,12 @@ This subproject is self-contained (its own pnpm workspace); it is a port of
 - `packages/protocol` — tunnel frame codec, session crypto (HKDF-SHA256 +
   XChaCha20-Poly1305), `TunnelSession` multiplexer.
 - `packages/p3xc` — native TypeScript P3XC: frames, tensors, batch dispatch and a
-  persistent client. It must stay wire-compatible with
-  `../ps3-cluster/ps3_cluster/{protocol,batch}.py`; `packages/p3xc/test/interop.test.ts`
-  checks that against the Python implementation and must be extended whenever the
-  codec changes. Never shell out to Python at runtime.
+  persistent client. It must stay wire-compatible with `ps3_cluster`'s
+  `{protocol,batch}.py` in erkinalp/ram-coffers;
+  `packages/p3xc/test/interop.test.ts` checks that against the Python
+  implementation (set `PS3_CLUSTER_DIR`, or keep a ram-coffers checkout beside
+  this one; it skips otherwise) and must be extended whenever the codec changes.
+  Never shell out to Python at runtime.
 
 ## Commands
 
