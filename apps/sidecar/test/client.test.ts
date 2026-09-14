@@ -22,7 +22,15 @@ function upstreamConfig(
   port: number,
 ): Pick<
   SidecarConfig,
-  "upstream" | "cofferUrl" | "p3xcHost" | "p3xcPort" | "p3xcTimeoutMs" | "models"
+  | "upstream"
+  | "cofferUrl"
+  | "p3xcHost"
+  | "p3xcPort"
+  | "p3xcTimeoutMs"
+  | "g9xcHost"
+  | "g9xcPort"
+  | "g9xcTimeoutMs"
+  | "models"
 > {
   return {
     upstream: "http",
@@ -30,6 +38,9 @@ function upstreamConfig(
     p3xcHost: "127.0.0.1",
     p3xcPort: 5920,
     p3xcTimeoutMs: 1000,
+    g9xcHost: "127.0.0.1",
+    g9xcPort: 9713,
+    g9xcTimeoutMs: 1000,
     models: [],
   };
 }

@@ -35,14 +35,19 @@ services:
       SIDECAR_NAME: ${SIDECAR_NAME:-homelab}
       PSK: ${SIDECAR_PSK:?set SIDECAR_PSK in .env (from the relay admin UI)}
       # http — the coffer host's inference service; p3xc — a PS3 expert cluster;
-      # both — chat over HTTP and /coffer/v1/* over P3XC.
+      # g9xc — a gen9 node worker; both — chat over HTTP and /coffer/v1/* over
+      # P3XC.
       UPSTREAM: ${UPSTREAM:-http}
       COFFER_URL: ${COFFER_URL:-http://localhost:8080}
       P3XC_HOST: ${P3XC_HOST:-127.0.0.1}
       P3XC_PORT: ${P3XC_PORT:-5920}
       P3XC_TIMEOUT_MS: ${P3XC_TIMEOUT_MS:-30000}
-      # Required in p3xc mode (P3XC has no model-listing operation); in both
-      # mode it names the cluster's models on top of what HTTP discovers.
+      G9XC_HOST: ${G9XC_HOST:-127.0.0.1}
+      G9XC_PORT: ${G9XC_PORT:-9713}
+      G9XC_TIMEOUT_MS: ${G9XC_TIMEOUT_MS:-30000}
+      # Required in p3xc/g9xc mode (neither cluster protocol can list models);
+      # in both mode it names the cluster's models on top of what HTTP
+      # discovers.
       MODELS: ${MODELS:-}
     restart: unless-stopped
 
@@ -58,7 +63,9 @@ services:
 
   # A P3XC layer coordinator fronting a PS3 shelf lives on hardware rather than
   # in a container; point P3XC_HOST/P3XC_PORT at
-  # `python -m ps3_cluster.tools.run_layer` on that host.
+  # `python -m ps3_cluster.tools.run_layer` on that host. Likewise a gen9
+  # console runs `gen9_cluster`'s node worker itself; point G9XC_HOST/G9XC_PORT
+  # at it.
 
 volumes:
   relay-data:

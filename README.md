@@ -1,9 +1,9 @@
 # ram-coffers-uplink
 
-Expose a RAM Coffers node or a PS3/P3XC expert cluster through a VPS relay, for
-yourself and the people you grant access to, via **Ollama-compatible and
-OpenAI-compatible HTTP APIs** plus the lower-level **RAM Coffers cluster API**
-(`/coffer/v1/*`).
+Expose a RAM Coffers node or an expert cluster (PS3 over P3XC, or a
+ninth-generation console over G9XC) through a VPS relay, for yourself and the
+people you grant access to, via **Ollama-compatible and OpenAI-compatible HTTP
+APIs** plus the lower-level **RAM Coffers cluster API** (`/coffer/v1/*`).
 
 - **sidecar** — runs next to the coffer hardware (POWER8 host, PS3 shelf, layer
   coordinator). Dials out to the relay over WSS, so no inbound firewall rules or
@@ -14,8 +14,8 @@ OpenAI-compatible HTTP APIs** plus the lower-level **RAM Coffers cluster API**
 
 It is a port of [ollama-uplink](https://github.com/symphonic-navigator/ollama-uplink)
 to RAM Coffers: the relay, encrypted uplink, API keys, model policies and
-rate limiting are the same design, while the upstream side speaks either a
-RAM Coffers HTTP inference service or P3XC directly.
+rate limiting are the same design, while the upstream side speaks a
+RAM Coffers HTTP inference service, P3XC or G9XC directly.
 
 ## Architecture
 
@@ -33,15 +33,18 @@ RAM Coffers HTTP inference service or P3XC directly.
                                                  ┌────────────────────┴──────────┐
                                                  │ sidecar (dials out, no inbound)│
                                                  └───────┬───────────────┬───────┘
-                                        HTTP (generation)│               │P3XC (cluster)
+                                        HTTP (generation)│               │P3XC / G9XC (cluster)
                                     ┌───────────────────┴──┐   ┌────────┴─────────────────┐
                                     │ coffer inference :8080│   │ expert node / subcluster │
-                                    │ (NUMA weight banks)   │   │ or layer coordinator     │
+                                    │ (NUMA weight banks)   │   │ or layer coordinator, or │
+                                    │                       │   │ a gen9 node worker       │
                                     └───────────────────────┘   └──────────────────────────┘
 ```
 
-`UPSTREAM` selects which of the two upstream legs a sidecar uses: `http`, `p3xc`
-or `both` (generation over HTTP, `/coffer/v1/*` over P3XC).
+`UPSTREAM` selects which upstream leg a sidecar uses: `http`, `p3xc`, `g9xc`
+or `both` (generation over HTTP, `/coffer/v1/*` over P3XC). `g9xc` is the
+cluster leg for a ninth-generation fleet: a sidecar speaks G9XC v2 directly to
+one node worker and forwards `/coffer/v1/*` to it.
 
 ## Quickstart (compose)
 
@@ -73,6 +76,12 @@ then run the sidecar with `UPSTREAM=p3xc`, `P3XC_PORT=5920` and `MODELS` naming
 whatever the cluster serves (P3XC has no model-listing operation, so the model
 list must be configured).
 
+A gen9 fleet works the same way: start a node worker (`gen9_cluster.node`) on
+the console, then run the sidecar with `UPSTREAM=g9xc`, `G9XC_HOST:G9XC_PORT`
+pointing at it and `MODELS` naming the fleet's model — G9XC cannot list models
+either. The node answers liveness, status, expert dispatch and batched
+dispatch; generation routes have no gen9 endpoint yet and answer 404.
+
 ## Configuration
 
 ### relay (environment)
@@ -94,12 +103,15 @@ list must be configured).
 | `RELAY_URL` | — (required) | `wss://` (production) or `ws://` (local/trusted networks) |
 | `SIDECAR_NAME` | — (required) | name created in the relay admin UI |
 | `PSK` | — (required) | shown once at sidecar creation |
-| `UPSTREAM` | `http` | `http`, `p3xc` or `both` |
+| `UPSTREAM` | `http` | `http`, `p3xc`, `both` or `g9xc` |
 | `COFFER_URL` | `http://localhost:8080` | RAM Coffers HTTP inference service (`http`/`both`) |
 | `P3XC_HOST` | `127.0.0.1` | expert node, subcluster or layer coordinator (`p3xc`/`both`) |
 | `P3XC_PORT` | `5920` | P3XC port |
 | `P3XC_TIMEOUT_MS` | `30000` | per-request P3XC deadline |
-| `MODELS` | empty | models to advertise; required for `p3xc`, additive for `both`, overrides discovery for `http` |
+| `G9XC_HOST` | `127.0.0.1` | gen9 node worker (`g9xc`) |
+| `G9XC_PORT` | `9713` | G9XC port |
+| `G9XC_TIMEOUT_MS` | `30000` | per-request G9XC deadline |
+| `MODELS` | empty | models to advertise; required for `p3xc`/`g9xc`, additive for `both`, overrides discovery for `http` |
 
 ## APIs
 
@@ -167,9 +179,10 @@ deliberately carries no `secure` flag so that local development over plain HTTP
 works; exposing the relay over HTTP on the public internet would leak admin
 session cookies and API keys.
 
-P3XC itself is unauthenticated and unencrypted, exactly as `ps3_cluster`'s
-transport is: keep the coordinator and its consoles on a private segment and let
-the sidecar be the only thing that talks to them.
+P3XC and G9XC are themselves unauthenticated and unencrypted, exactly as
+`ps3_cluster`'s and `gen9_cluster`'s transports are: keep the coordinator and
+its consoles on a private segment and let the sidecar be the only thing that
+talks to them.
 
 ## Development
 
@@ -181,11 +194,13 @@ pnpm typecheck
 pnpm lint
 ```
 
-The P3XC codec is verified against the Python reference implementation in
-[erkinalp/ram-coffers](https://github.com/erkinalp/ram-coffers)'s `ps3-cluster`
-(`packages/p3xc/test/interop.test.ts` encodes in TypeScript, decodes with
-`ps3_cluster.protocol`/`ps3_cluster.batch` and back, and runs a Python coordinator
-over a real socket). Point `PS3_CLUSTER_DIR` at that directory, or keep a
-ram-coffers checkout beside this one; the tests skip when neither is available.
+The wire codecs are verified against the Python reference implementations in
+[erkinalp/ram-coffers](https://github.com/erkinalp/ram-coffers):
+`packages/p3xc/test/interop.test.ts` encodes in TypeScript, decodes with
+`ps3_cluster.protocol`/`ps3_cluster.batch` and back, and runs a Python
+coordinator over a real socket; `packages/g9xc/test/interop.test.ts` does the
+same against `gen9_cluster.protocol`. Point `PS3_CLUSTER_DIR` and
+`GEN9_CLUSTER_DIR` at those directories, or keep a ram-coffers checkout beside
+this one; the tests skip when neither is available.
 
 See `AGENTS.md` for repository conventions. Licence: AGPLv3.

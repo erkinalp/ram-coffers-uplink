@@ -1,4 +1,5 @@
 import type { Responder } from "@ram-coffers-uplink/protocol";
+import { createG9xcUpstream } from "./coffer-g9xc.js";
 import type { UpstreamRequest } from "./coffer-http.js";
 import { fetchModels, forwardOverHttp } from "./coffer-http.js";
 import { COFFER_PATH_PREFIX, createP3xcUpstream } from "./coffer-p3xc.js";
@@ -30,6 +31,7 @@ function httpUpstream(config: SidecarConfig, pinned: boolean): Upstream {
  */
 export function createUpstream(config: SidecarConfig): Upstream {
   if (config.upstream === "http") return httpUpstream(config, true);
+  if (config.upstream === "g9xc") return createG9xcUpstream(config);
   const p3xc = createP3xcUpstream(config);
   if (config.upstream === "p3xc") return p3xc;
   const http = httpUpstream(config, false);

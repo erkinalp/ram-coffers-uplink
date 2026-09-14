@@ -17,7 +17,13 @@ A port of `symphonic-navigator/ollama-uplink` with RAM Coffers upstreams.
   `packages/p3xc/test/interop.test.ts` checks that against the Python
   implementation (set `PS3_CLUSTER_DIR`, or keep a ram-coffers checkout beside
   this one; it skips otherwise) and must be extended whenever the codec changes.
-  Never shell out to Python at runtime.
+- `packages/g9xc` — native TypeScript G9XC v2: 32-byte frames, expert batch and
+  per-expert row payloads, a multiplexed client (replies match `request_id`,
+  not position). It must stay wire-compatible with `gen9_cluster`'s
+  `protocol.py` in erkinalp/ram-coffers; `packages/g9xc/test/interop.test.ts`
+  checks that (set `GEN9_CLUSTER_DIR`, or keep a ram-coffers checkout beside
+  this one; it skips otherwise) and must be extended whenever the codec changes.
+- Never shell out to Python at runtime.
 
 ## Commands
 

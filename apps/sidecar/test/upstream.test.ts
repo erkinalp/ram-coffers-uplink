@@ -38,6 +38,9 @@ describe("createUpstream", () => {
       // Unreachable on purpose: `both` must not consult P3XC for HTTP paths.
       p3xcPort: 1,
       p3xcTimeoutMs: 300,
+      g9xcHost: "127.0.0.1",
+      g9xcPort: 1,
+      g9xcTimeoutMs: 300,
       models: [],
       ...overrides,
     };
