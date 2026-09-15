@@ -25,6 +25,9 @@ describe("loadSidecarConfig", () => {
       p3xcHost: "127.0.0.1",
       p3xcPort: 5920,
       p3xcTimeoutMs: 30_000,
+      g9xcHost: "127.0.0.1",
+      g9xcPort: 9713,
+      g9xcTimeoutMs: 30_000,
       models: [],
     });
   });
@@ -56,6 +59,33 @@ describe("loadSidecarConfig", () => {
     expect(config.models).toEqual(["deepseek-v3-mxfp4", "qwen3-30b-a3b"]);
   });
 
+  it("reads the G9XC upstream settings and requires a model list", () => {
+    expect(() =>
+      loadSidecarConfig({
+        RELAY_URL: "wss://r/uplink",
+        SIDECAR_NAME: "lab",
+        PSK: "p",
+        UPSTREAM: "g9xc",
+      }),
+    ).toThrow(/MODELS is required/);
+    const config = loadSidecarConfig({
+      RELAY_URL: "wss://r/uplink",
+      SIDECAR_NAME: "lab",
+      PSK: "p",
+      UPSTREAM: "g9xc",
+      G9XC_HOST: "ps5-001",
+      G9XC_PORT: "9714",
+      G9XC_TIMEOUT_MS: "1500",
+      MODELS: "deepseek-v4.1-flash",
+    });
+    expect(config.upstream).toBe("g9xc");
+    expect(config.cofferUrl).toBeNull();
+    expect(config.g9xcHost).toBe("ps5-001");
+    expect(config.g9xcPort).toBe(9714);
+    expect(config.g9xcTimeoutMs).toBe(1500);
+    expect(config.models).toEqual(["deepseek-v4.1-flash"]);
+  });
+
   it("rejects an unknown upstream kind and a bad P3XC port", () => {
     expect(() =>
       loadSidecarConfig({
@@ -73,6 +103,14 @@ describe("loadSidecarConfig", () => {
         P3XC_PORT: "70000",
       }),
     ).toThrow(/P3XC_PORT/);
+    expect(() =>
+      loadSidecarConfig({
+        RELAY_URL: "wss://r/uplink",
+        SIDECAR_NAME: "lab",
+        PSK: "p",
+        G9XC_PORT: "0",
+      }),
+    ).toThrow(/G9XC_PORT/);
   });
 
   it("accepts plain ws:// for local and trusted networks", () => {

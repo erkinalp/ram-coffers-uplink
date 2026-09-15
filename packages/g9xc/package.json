@@ -1,5 +1,5 @@
 {
-  "name": "@ram-coffers-uplink/sidecar",
+  "name": "@ram-coffers-uplink/g9xc",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,19 +15,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests",
-    "start": "node dist/index.js"
+    "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
     "@types/node": "22.20.1",
-    "@types/ws": "8.18.1",
     "vitest": "4.1.10"
-  },
-  "dependencies": {
-    "@ram-coffers-uplink/g9xc": "workspace:*",
-    "@ram-coffers-uplink/p3xc": "workspace:*",
-    "@ram-coffers-uplink/protocol": "workspace:*",
-    "dotenv": "17.4.2",
-    "ws": "8.21.3"
   }
 }

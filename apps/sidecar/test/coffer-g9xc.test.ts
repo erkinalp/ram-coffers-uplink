@@ -1,19 +1,19 @@
 import net from "node:net";
 import {
-  DTYPE_F32,
+  DTYPE_FP32,
   encodeFrame,
+  FLAG_PER_EXPERT,
   type Frame,
   FrameReader,
-  MSG_BERR,
-  MSG_BRSP,
+  MSG_ERROR,
+  MSG_EXPERT_RESULT,
+  MSG_HELLO_ACK,
   MSG_PONG,
-  MSG_RSP,
-  NO_EXPERT,
-  RSP_FLAG_PER_EXPERT,
-} from "@ram-coffers-uplink/p3xc";
+  MSG_STATUS_REPLY,
+} from "@ram-coffers-uplink/g9xc";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createG9xcUpstream } from "../src/coffer-g9xc.js";
 import type { UpstreamRequest } from "../src/coffer-http.js";
-import { createP3xcUpstream } from "../src/coffer-p3xc.js";
 import type { SidecarConfig } from "../src/config.js";
 import type { Upstream } from "../src/upstream.js";
 
@@ -66,15 +66,27 @@ function request(method: string, path: string, body?: unknown): UpstreamRequest 
   } as UpstreamRequest;
 }
 
-function f32(values: number[]): Uint8Array {
-  const payload = new Uint8Array(values.length * 4);
+function rowsPayload(experts: number[], rows: number[][]): Uint8Array {
+  const width = rows[0]?.length ?? 0;
+  const payload = new Uint8Array(6 + experts.length * 2 + rows.length * width * 4);
   const view = new DataView(payload.buffer);
-  for (const [index, value] of values.entries()) view.setFloat32(index * 4, value);
+  view.setUint16(0, experts.length, true);
+  view.setUint32(2, width, true);
+  let off = 6;
+  for (const id of experts) {
+    view.setUint16(off, id, true);
+    off += 2;
+  }
+  for (const row of rows)
+    for (const value of row) {
+      view.setFloat32(off, value, true);
+      off += 4;
+    }
   return payload;
 }
 
-/** A stub coordinator answering with the frame the test chooses per request. */
-class StubCoordinator {
+/** A stub gen9 node: answers each frame with what the test queued for it. */
+class StubNode {
   private readonly server = net.createServer((socket) => {
     this.sockets.push(socket);
     const reader = new FrameReader();
@@ -105,31 +117,64 @@ class StubCoordinator {
   }
 }
 
-describe("P3XC upstream", () => {
-  let node: StubCoordinator;
+function reply(request: Frame, msgType: number, payload: Uint8Array, flags = 0): Uint8Array {
+  return encodeFrame({
+    msgType,
+    requestId: request.requestId,
+    layer: request.layer,
+    expert: request.expert,
+    token: request.token,
+    dtype: DTYPE_FP32,
+    rank: 0,
+    flags,
+    payload,
+  });
+}
+
+function helloPayload(): Uint8Array {
+  const strings = ["ps5-001", "ps5", "vulkan", "ps5-linux"];
+  const payload = new Uint8Array(25 + strings.reduce((n, s) => n + 2 + s.length, 0));
+  const view = new DataView(payload.buffer);
+  view.setBigUint64(0, 1234n, true);
+  view.setBigUint64(8, 567n, true);
+  view.setFloat64(16, 800, true);
+  view.setUint8(24, 2);
+  let off = 25;
+  for (const text of strings) {
+    const raw = new TextEncoder().encode(text);
+    view.setUint16(off, raw.length, true);
+    off += 2;
+    payload.set(raw, off);
+    off += raw.length;
+  }
+  return payload;
+}
+
+describe("G9XC upstream", () => {
+  let node: StubNode;
   let upstream: Upstream;
 
   function config(): SidecarConfig {
     return {
       relayUrl: "ws://relay/uplink",
-      name: "ps3-shelf",
+      name: "gen9-shelf",
       psk: "psk",
-      upstream: "p3xc",
+      upstream: "g9xc",
       cofferUrl: null,
       p3xcHost: "127.0.0.1",
-      p3xcPort: node.port,
+      p3xcPort: 5920,
       p3xcTimeoutMs: 2000,
       g9xcHost: "127.0.0.1",
-      g9xcPort: 9713,
+      g9xcPort: node.port,
       g9xcTimeoutMs: 2000,
-      models: ["deepseek-v3-mxfp4"],
+      models: ["deepseek-v4.1-flash"],
     };
   }
 
   beforeEach(async () => {
-    node = new StubCoordinator();
+    node = new StubNode();
     await node.listen();
-    upstream = createP3xcUpstream(config());
+    upstream = createG9xcUpstream(config());
   });
 
   afterEach(async () => {
@@ -137,47 +182,50 @@ describe("P3XC upstream", () => {
     await node.close();
   });
 
-  it("advertises the configured models without asking the cluster", async () => {
-    expect(await upstream.models()).toEqual(["deepseek-v3-mxfp4"]);
+  it("advertises the configured models without asking the node", async () => {
+    expect(await upstream.models()).toEqual(["deepseek-v4.1-flash"]);
     const tags = collector();
     await upstream.forward(request("GET", "/api/tags"), tags.responder);
     expect(tags.json()).toEqual({
-      models: [{ name: "deepseek-v3-mxfp4", model: "deepseek-v3-mxfp4" }],
+      models: [{ name: "deepseek-v4.1-flash", model: "deepseek-v4.1-flash" }],
     });
     expect(node.received).toHaveLength(0);
   });
 
-  it("answers a health probe with the coordinator address and round-trip time", async () => {
-    node.reply = () =>
-      encodeFrame({
-        msgType: MSG_PONG,
-        layer: 0,
-        expert: NO_EXPERT,
-        tokenId: 0,
-        dtype: DTYPE_F32,
-        shape: [1],
-        payload: f32([0]),
-      });
+  it("answers a health probe with the node's hello and round-trip time", async () => {
+    node.reply = (frame) =>
+      frame.msgType === 9
+        ? reply(frame, MSG_PONG, frame.payload)
+        : reply(frame, MSG_HELLO_ACK, helloPayload());
     const health = collector();
     await upstream.forward(request("GET", "/coffer/v1/health"), health.responder);
     expect(health.status).toBe(200);
-    const body = health.json<{ status: string; coordinator: string; rtt_ms: number }>();
+    const body = health.json<{
+      status: string;
+      node: string;
+      unit: string;
+      sku: string;
+      rtt_ms: number;
+    }>();
     expect(body.status).toBe("ok");
-    expect(body.coordinator).toBe(`127.0.0.1:${node.port}`);
+    expect(body.node).toBe(`127.0.0.1:${node.port}`);
+    expect(body.unit).toBe("ps5-001");
+    expect(body.sku).toBe("ps5");
     expect(body.rtt_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it("returns the node's status text", async () => {
+    node.reply = (frame) =>
+      reply(frame, MSG_STATUS_REPLY, new TextEncoder().encode("2 experts resident, 0 queued"));
+    const status = collector();
+    await upstream.forward(request("GET", "/coffer/v1/status"), status.responder);
+    expect(status.status).toBe(200);
+    expect(status.json()).toEqual({ status: "2 experts resident, 0 queued" });
   });
 
   it("dispatches one expert and returns its output", async () => {
     node.reply = (frame) =>
-      encodeFrame({
-        msgType: MSG_RSP,
-        layer: frame.layer,
-        expert: frame.expert,
-        tokenId: frame.tokenId,
-        dtype: DTYPE_F32,
-        shape: [2],
-        payload: f32([0.5, 1.5]),
-      });
+      reply(frame, MSG_EXPERT_RESULT, rowsPayload([frame.expert], [[0.5, 1.5]]), FLAG_PER_EXPERT);
     const out = collector();
     await upstream.forward(
       request("POST", "/coffer/v1/dispatch", {
@@ -190,24 +238,23 @@ describe("P3XC upstream", () => {
     );
     expect(out.status).toBe(200);
     expect(out.json()).toEqual({ output: [0.5, 1.5] });
-    expect(node.received[0]).toMatchObject({ msgType: 1, layer: 4, expert: 6, tokenId: 8 });
+    expect(node.received[0]).toMatchObject({ msgType: 3, layer: 4, expert: 6, token: 8 });
   });
 
-  it("dispatches a batch and reports per-expert contributions", async () => {
-    const rows = new Uint8Array(16);
-    const view = new DataView(rows.buffer);
-    for (const [index, value] of [1, 2, 3, 4].entries()) view.setFloat32(index * 4, value);
+  it("dispatches a batch and reports per-expert contributions and flags", async () => {
     node.reply = (frame) =>
-      encodeFrame({
-        msgType: MSG_BRSP,
-        layer: frame.layer,
-        expert: NO_EXPERT,
-        tokenId: frame.tokenId,
-        dtype: DTYPE_F32,
-        shape: [2, 2],
-        payload: rows,
-        trailer: new Uint8Array([0, 2, 0, RSP_FLAG_PER_EXPERT, 0, 11, 0, 12]),
-      });
+      reply(
+        frame,
+        MSG_EXPERT_RESULT,
+        rowsPayload(
+          [11, 12],
+          [
+            [1, 2],
+            [3, 4],
+          ],
+        ),
+        FLAG_PER_EXPERT | 32,
+      );
     const out = collector();
     await upstream.forward(
       request("POST", "/coffer/v1/batch", {
@@ -216,9 +263,8 @@ describe("P3XC upstream", () => {
         activation: [0.5],
         entries: [
           { expert: 11, gate: 0.75 },
-          { expert: 12, gate: 0.25, replica: 1 },
+          { expert: 12, gate: 0.25 },
         ],
-        deadline_ms: 500,
         request_id: "3735928559",
       }),
       out.responder,
@@ -227,65 +273,40 @@ describe("P3XC upstream", () => {
     expect(out.json()).toEqual({
       layer: 3,
       token_id: 77,
-      n_reduced: 2,
+      n_experts: 2,
       per_expert: true,
       experts: [11, 12],
       contributions: [
         [1, 2],
         [3, 4],
       ],
-      request_id: null,
+      batch_id: "3735928559",
+      replayed: true,
+      from_storage: false,
     });
-    expect(node.received[0]).toMatchObject({ msgType: 6, layer: 3, expert: NO_EXPERT });
+    // request_id lands in the payload as the batch's dedup id.
+    const payload = new DataView(new Uint8Array(node.received[0]?.payload ?? []).buffer);
+    expect(payload.getUint8(6)).toBe(1);
+    expect(payload.getBigUint64(7, true)).toBe(3735928559n);
   });
 
-  it("turns a BERR reply into a 502 naming the failures", async () => {
-    const trailer = new Uint8Array([
-      0,
-      5, // code: ERR_NODE_ERROR
-      0,
-      1, // one failure
-      0,
-      11, // expert
-      0,
-      4, // reason: ERR_NODE_TIMEOUT
-      0,
-      6, // node id length
-      ...new TextEncoder().encode("ps3-07"),
-      0,
-      7, // detail length
-      ...new TextEncoder().encode("stalled"),
-    ]);
+  it("turns an ERROR reply into a 502 with the node's message", async () => {
     node.reply = (frame) =>
-      encodeFrame({
-        msgType: MSG_BERR,
-        layer: frame.layer,
-        expert: NO_EXPERT,
-        tokenId: frame.tokenId,
-        dtype: DTYPE_F32,
-        shape: [1],
-        payload: f32([0]),
-        trailer,
-      });
+      reply(frame, MSG_ERROR, new TextEncoder().encode("expert not resident"));
     const out = collector();
     await upstream.forward(
       request("POST", "/coffer/v1/batch", {
         layer: 3,
-        token_id: 77,
         activation: [0.5],
         entries: [{ expert: 11, gate: 1 }],
       }),
       out.responder,
     );
     expect(out.status).toBe(502);
-    expect(out.json()).toEqual({
-      error: "stalled",
-      code: 5,
-      failures: [{ expert: 11, reason: 4, nodeId: "ps3-07" }],
-    });
+    expect(out.json()).toEqual({ error: "expert not resident" });
   });
 
-  it("rejects malformed dispatch bodies with a 400 and never touches the cluster", async () => {
+  it("rejects malformed bodies and replica placement with a 400", async () => {
     const cases: unknown[] = [
       { expert: 1, activation: [1] },
       { layer: 1, expert: 1, activation: [] },
@@ -304,18 +325,42 @@ describe("P3XC upstream", () => {
       badEntries.responder,
     );
     expect(badEntries.status).toBe(400);
+    const replica = collector();
+    await upstream.forward(
+      request("POST", "/coffer/v1/batch", {
+        layer: 1,
+        activation: [1],
+        entries: [{ expert: 1, gate: 1, replica: 2 }],
+      }),
+      replica.responder,
+    );
+    expect(replica.status).toBe(400);
+    expect(replica.json()).toEqual({
+      error: "replica is a coordinator decision; a G9XC node takes none",
+    });
+    const badId = collector();
+    await upstream.forward(
+      request("POST", "/coffer/v1/batch", {
+        layer: 1,
+        activation: [1],
+        entries: [{ expert: 1, gate: 1 }],
+        request_id: "not-a-number",
+      }),
+      badId.responder,
+    );
+    expect(badId.status).toBe(400);
     expect(node.received).toHaveLength(0);
   });
 
-  it("reports unsupported routes as 404 and generation as unavailable", async () => {
+  it("reports generation routes as unavailable on a node upstream", async () => {
     const out = collector();
     await upstream.forward(request("POST", "/api/chat", { model: "x" }), out.responder);
     expect(out.status).toBe(404);
-    expect(out.json()).toEqual({ error: "not supported by a P3XC upstream" });
+    expect(out.json()).toEqual({ error: "not supported by a G9XC upstream" });
   });
 
-  it("sends a tunnel error when the cluster is unreachable", async () => {
-    const unreachable = createP3xcUpstream({ ...config(), p3xcPort: 1, p3xcTimeoutMs: 300 });
+  it("sends a tunnel error when the node is unreachable", async () => {
+    const unreachable = createG9xcUpstream({ ...config(), g9xcPort: 1, g9xcTimeoutMs: 300 });
     const out = collector();
     await unreachable.forward(request("GET", "/coffer/v1/health"), out.responder);
     expect(out.error).toBe("upstream request failed");
